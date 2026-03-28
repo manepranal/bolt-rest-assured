@@ -1,0 +1,709 @@
+{
+  "info": {
+    "name": "RV2-62364: Yenta→Sherlock Atomic Answer Proxying",
+    "description": "Tests that Yenta→Sherlock answer and file-reference proxying is atomic.\nWhen Yenta processing fails after Sherlock commits, Sherlock is rolled back.\n\nTarget env: team1\nTest application: 63afe33d-6f79-46e9-91b4-62e1fecb5684\n\nRun order:\n1. Setup — fetches application + checklist and sets variables\n2. Happy path tests\n3. Rollback tests (using simulateYentaFailure=true)\n4. Cross-system consistency check",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "yentaBaseUrl",
+      "value": "https://yenta.team1realbrokerage.com",
+      "type": "string"
+    },
+    {
+      "key": "sherlockBaseUrl",
+      "value": "https://sherlock.team1realbrokerage.com",
+      "type": "string"
+    },
+    {
+      "key": "authToken",
+      "value": "YOUR_AUTH_TOKEN_HERE",
+      "type": "string"
+    },
+    {
+      "key": "applicationId",
+      "value": "63afe33d-6f79-46e9-91b4-62e1fecb5684",
+      "type": "string"
+    },
+    {
+      "key": "onboardingId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "checklistId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "testQuestionId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "testFileItemId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "testFileId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Setup",
+      "item": [
+        {
+          "name": "0.1 Get Application",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Application exists and has onboardings', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var body = pm.response.json();",
+                  "    pm.expect(body.onboardings).to.be.an('array').that.is.not.empty;",
+                  "",
+                  "    var onboardingId = body.onboardings[0].id;",
+                  "    pm.collectionVariables.set('onboardingId', onboardingId);",
+                  "    console.log('onboardingId = ' + onboardingId);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{yentaBaseUrl}}/api/v1/applications/{{applicationId}}",
+              "host": ["{{yentaBaseUrl}}"],
+              "path": ["api", "v1", "applications", "{{applicationId}}"]
+            }
+          }
+        },
+        {
+          "name": "0.2 Get Checklist (via Yenta)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Checklist loaded with items', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var body = pm.response.json();",
+                  "    pm.expect(body.id).to.not.be.null;",
+                  "    pm.expect(body.items).to.be.an('array').that.is.not.empty;",
+                  "",
+                  "    pm.collectionVariables.set('checklistId', body.id);",
+                  "    console.log('checklistId = ' + body.id);",
+                  "",
+                  "    // Find a NOT_STARTED item for answer testing",
+                  "    var questionItem = body.items.find(i => i.status === 'NOT_STARTED' && i.alias);",
+                  "    if (questionItem) {",
+                  "        pm.collectionVariables.set('testQuestionId', questionItem.id);",
+                  "        console.log('testQuestionId = ' + questionItem.id + ' alias = ' + questionItem.alias);",
+                  "    } else {",
+                  "        console.warn('No NOT_STARTED question item found — answer tests will fail');",
+                  "    }",
+                  "",
+                  "    // Find any non-completed item for file-reference testing",
+                  "    var fileItem = body.items.find(i => i.status !== 'DONE' && i.status !== 'ACCEPTED');",
+                  "    if (fileItem) {",
+                  "        pm.collectionVariables.set('testFileItemId', fileItem.id);",
+                  "        console.log('testFileItemId = ' + fileItem.id);",
+                  "    } else {",
+                  "        console.warn('No suitable item for file-ref testing');",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{yentaBaseUrl}}/api/v1/applications/onboardings/{{onboardingId}}/checklist",
+              "host": ["{{yentaBaseUrl}}"],
+              "path": ["api", "v1", "applications", "onboardings", "{{onboardingId}}", "checklist"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Happy Path — Answer Submission",
+      "item": [
+        {
+          "name": "1.1 Submit Answer (happy path)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Answer submitted successfully — 204', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "\"Test Answer - RV2-62364\""
+            },
+            "url": {
+              "raw": "{{yentaBaseUrl}}/api/v1/applications/{{applicationId}}/questions/{{testQuestionId}}/answer",
+              "host": ["{{yentaBaseUrl}}"],
+              "path": ["api", "v1", "applications", "{{applicationId}}", "questions", "{{testQuestionId}}", "answer"]
+            }
+          }
+        },
+        {
+          "name": "1.2 Verify Sherlock Item Updated",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Sherlock item status is no longer NOT_STARTED', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var body = pm.response.json();",
+                  "    pm.expect(body.id).to.eql(pm.collectionVariables.get('testQuestionId'));",
+                  "    pm.expect(body.status).to.not.eql('NOT_STARTED');",
+                  "    console.log('Sherlock item status = ' + body.status);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{sherlockBaseUrl}}/api/v1/checklists/checklist-items/{{testQuestionId}}",
+              "host": ["{{sherlockBaseUrl}}"],
+              "path": ["api", "v1", "checklists", "checklist-items", "{{testQuestionId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Rollback — Answer Submission",
+      "item": [
+        {
+          "name": "2.1 Reset Item to NOT_STARTED (pre-condition)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Sherlock reset accepted — 204', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"itemIds\": [\"{{testQuestionId}}\"]\n}"
+            },
+            "url": {
+              "raw": "{{sherlockBaseUrl}}/api/v1/checklists/checklist-items/reset",
+              "host": ["{{sherlockBaseUrl}}"],
+              "path": ["api", "v1", "checklists", "checklist-items", "reset"]
+            }
+          }
+        },
+        {
+          "name": "2.2 Confirm Item is NOT_STARTED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Item is NOT_STARTED before rollback test', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('NOT_STARTED');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{sherlockBaseUrl}}/api/v1/checklists/checklist-items/{{testQuestionId}}",
+              "host": ["{{sherlockBaseUrl}}"],
+              "path": ["api", "v1", "checklists", "checklist-items", "{{testQuestionId}}"]
+            }
+          }
+        },
+        {
+          "name": "2.3 Submit Answer with simulateYentaFailure=true",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Yenta returns error (simulated failure)', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([400, 422, 500]);",
+                  "    console.log('Yenta failure response: ' + pm.response.code);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "\"Simulated Failure Answer - RV2-62364\""
+            },
+            "url": {
+              "raw": "{{yentaBaseUrl}}/api/v1/applications/{{applicationId}}/questions/{{testQuestionId}}/answer?simulateYentaFailure=true",
+              "host": ["{{yentaBaseUrl}}"],
+              "path": ["api", "v1", "applications", "{{applicationId}}", "questions", "{{testQuestionId}}", "answer"],
+              "query": [
+                { "key": "simulateYentaFailure", "value": "true" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "2.4 Verify Sherlock Rolled Back to NOT_STARTED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('ROLLBACK VERIFIED: Sherlock item is back to NOT_STARTED', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql('NOT_STARTED',",
+                  "        'Sherlock should have been rolled back to NOT_STARTED but was: ' + body.status);",
+                  "    console.log('Rollback confirmed — Sherlock status = ' + body.status);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{sherlockBaseUrl}}/api/v1/checklists/checklist-items/{{testQuestionId}}",
+              "host": ["{{sherlockBaseUrl}}"],
+              "path": ["api", "v1", "checklists", "checklist-items", "{{testQuestionId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Happy Path — File References",
+      "item": [
+        {
+          "name": "3.1 Add File References (happy path)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "var testFileId = pm.variables.replaceIn('{{$guid}}');",
+                  "pm.collectionVariables.set('testFileId', testFileId);",
+                  "console.log('testFileId = ' + testFileId);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('File references added — 204', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"references\": [\n    {\n      \"fileId\": \"{{testFileId}}\",\n      \"filename\": \"test-rv2-62364.pdf\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{yentaBaseUrl}}/api/v1/applications/{{applicationId}}/checklists/checklist-items/{{testFileItemId}}/file-references",
+              "host": ["{{yentaBaseUrl}}"],
+              "path": ["api", "v1", "applications", "{{applicationId}}", "checklists", "checklist-items", "{{testFileItemId}}", "file-references"]
+            }
+          }
+        },
+        {
+          "name": "3.2 Verify Sherlock Has File Reference",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Sherlock item contains the added file reference', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var body = pm.response.json();",
+                  "    var testFileId = pm.collectionVariables.get('testFileId');",
+                  "",
+                  "    pm.expect(body.fileReferences).to.not.be.null;",
+                  "    pm.expect(body.fileReferences.references).to.be.an('array');",
+                  "",
+                  "    var found = body.fileReferences.references.some(r => r.fileId === testFileId);",
+                  "    pm.expect(found).to.be.true;",
+                  "    console.log('File ref ' + testFileId + ' found in Sherlock');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{sherlockBaseUrl}}/api/v1/checklists/checklist-items/{{testFileItemId}}",
+              "host": ["{{sherlockBaseUrl}}"],
+              "path": ["api", "v1", "checklists", "checklist-items", "{{testFileItemId}}"]
+            }
+          }
+        },
+        {
+          "name": "3.3 Cleanup — Remove Test File Reference",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('File reference cleaned up — 204', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"references\": [\n    {\n      \"fileId\": \"{{testFileId}}\",\n      \"filename\": \"test-rv2-62364.pdf\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{sherlockBaseUrl}}/api/v1/checklists/checklist-items/{{testFileItemId}}/file-references",
+              "host": ["{{sherlockBaseUrl}}"],
+              "path": ["api", "v1", "checklists", "checklist-items", "{{testFileItemId}}", "file-references"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Rollback — File References",
+      "item": [
+        {
+          "name": "4.1 Capture Current File Ref Count",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Captured baseline file ref count', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var body = pm.response.json();",
+                  "    var refs = (body.fileReferences && body.fileReferences.references) || [];",
+                  "    pm.collectionVariables.set('refCountBefore', refs.length);",
+                  "    console.log('File ref count before = ' + refs.length);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{sherlockBaseUrl}}/api/v1/checklists/checklist-items/{{testFileItemId}}",
+              "host": ["{{sherlockBaseUrl}}"],
+              "path": ["api", "v1", "checklists", "checklist-items", "{{testFileItemId}}"]
+            }
+          }
+        },
+        {
+          "name": "4.2 Add File Refs with simulateYentaFailure=true",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "var rollbackFileId = pm.variables.replaceIn('{{$guid}}');",
+                  "pm.collectionVariables.set('rollbackFileId', rollbackFileId);",
+                  "console.log('rollbackFileId = ' + rollbackFileId);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Yenta returns error (simulated failure)', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([400, 422, 500]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"references\": [\n    {\n      \"fileId\": \"{{rollbackFileId}}\",\n      \"filename\": \"rollback-test-rv2-62364.pdf\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{yentaBaseUrl}}/api/v1/applications/{{applicationId}}/checklists/checklist-items/{{testFileItemId}}/file-references?simulateYentaFailure=true",
+              "host": ["{{yentaBaseUrl}}"],
+              "path": ["api", "v1", "applications", "{{applicationId}}", "checklists", "checklist-items", "{{testFileItemId}}", "file-references"],
+              "query": [
+                { "key": "simulateYentaFailure", "value": "true" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "4.3 Verify Sherlock File Refs Rolled Back",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('ROLLBACK VERIFIED: File ref count unchanged', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var body = pm.response.json();",
+                  "    var refs = (body.fileReferences && body.fileReferences.references) || [];",
+                  "    var before = parseInt(pm.collectionVariables.get('refCountBefore'));",
+                  "",
+                  "    pm.expect(refs.length).to.eql(before,",
+                  "        'File ref count should be ' + before + ' but was ' + refs.length);",
+                  "    console.log('Rollback confirmed — file ref count: before=' + before + ' after=' + refs.length);",
+                  "});",
+                  "",
+                  "pm.test('ROLLBACK VERIFIED: Test file ID not present in Sherlock', function () {",
+                  "    var body = pm.response.json();",
+                  "    var refs = (body.fileReferences && body.fileReferences.references) || [];",
+                  "    var rollbackFileId = pm.collectionVariables.get('rollbackFileId');",
+                  "",
+                  "    var found = refs.some(r => r.fileId === rollbackFileId);",
+                  "    pm.expect(found).to.be.false;",
+                  "    console.log('File ref ' + rollbackFileId + ' correctly absent from Sherlock');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{sherlockBaseUrl}}/api/v1/checklists/checklist-items/{{testFileItemId}}",
+              "host": ["{{sherlockBaseUrl}}"],
+              "path": ["api", "v1", "checklists", "checklist-items", "{{testFileItemId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Sherlock Reset Endpoint",
+      "item": [
+        {
+          "name": "5.1 Verify resetChecklistItems Endpoint Exists",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Sherlock reset endpoint is deployed and reachable', function () {",
+                  "    // 204 = success, 200 = success, 404 = item not found (endpoint exists)",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 204, 404]);",
+                  "    console.log('Reset endpoint response: ' + pm.response.code);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"itemIds\": [\"00000000-0000-0000-0000-000000000000\"]\n}"
+            },
+            "url": {
+              "raw": "{{sherlockBaseUrl}}/api/v1/checklists/checklist-items/reset",
+              "host": ["{{sherlockBaseUrl}}"],
+              "path": ["api", "v1", "checklists", "checklist-items", "reset"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Cross-System Consistency",
+      "item": [
+        {
+          "name": "6.1 Get Checklist from Sherlock",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Sherlock checklist loaded', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var body = pm.response.json();",
+                  "    pm.collectionVariables.set('sherlockItemCount', body.items.length);",
+                  "    console.log('Sherlock item count = ' + body.items.length);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{sherlockBaseUrl}}/api/v1/checklists/{{checklistId}}",
+              "host": ["{{sherlockBaseUrl}}"],
+              "path": ["api", "v1", "checklists", "{{checklistId}}"]
+            }
+          }
+        },
+        {
+          "name": "6.2 Get Checklist from Yenta",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Yenta checklist loaded', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var yentaCount = pm.response.json().items.length;",
+                  "    console.log('Yenta item count = ' + yentaCount);",
+                  "});",
+                  "",
+                  "pm.test('CONSISTENCY: Yenta and Sherlock have same item count', function () {",
+                  "    var yentaCount = pm.response.json().items.length;",
+                  "    var sherlockCount = parseInt(pm.collectionVariables.get('sherlockItemCount'));",
+                  "",
+                  "    pm.expect(yentaCount).to.eql(sherlockCount,",
+                  "        'Yenta (' + yentaCount + ') and Sherlock (' + sherlockCount + ') item counts diverged');",
+                  "    console.log('Consistency OK — both have ' + yentaCount + ' items');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{yentaBaseUrl}}/api/v1/applications/onboardings/{{onboardingId}}/checklist",
+              "host": ["{{yentaBaseUrl}}"],
+              "path": ["api", "v1", "applications", "onboardings", "{{onboardingId}}", "checklist"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -111,21 +111,21 @@ This fetches the ticket, generates the test class, and raises a PR automatically
 
 ## Environments
 
-All environments follow the same URL pattern — just swap in the env name:
+All environments follow the same URL pattern — just swap in the env name.
 
-| Env | Base URL pattern |
-|-----|-----------------|
-| team1 | `https://{service}.team1realbrokerage.com` |
-| team2 | `https://{service}.team2realbrokerage.com` |
-| team3 | `https://{service}.team3realbrokerage.com` |
-| team4 | `https://{service}.team4realbrokerage.com` |
-| staging | `https://{service}.stagerealbrokerage.com` |
-| play | `https://{service}.playrealbrokerage.com` |
+| Env | Bolt App | Service API pattern |
+|-----|----------|-------------------|
+| team1 | `https://bolt.team1realbrokerage.com` | `https://{service}.team1realbrokerage.com` |
+| team2 | `https://bolt.team2realbrokerage.com` | `https://{service}.team2realbrokerage.com` |
+| team3 | `https://bolt.team3realbrokerage.com` | `https://{service}.team3realbrokerage.com` |
+| team4 | `https://bolt.team4realbrokerage.com` | `https://{service}.team4realbrokerage.com` |
+| staging | `https://bolt.stagerealbrokerage.com` | `https://{service}.stagerealbrokerage.com` |
+| play | `https://bolt.playrealbrokerage.com` | `https://{service}.playrealbrokerage.com` |
 
 Each env has its own config file at `src/test/resources/config-{env}.properties` with all service base URLs and an `auth.token` property.
 
-> Example for `yenta` on `team3`:
-> `https://yenta.team3realbrokerage.com`
+> Example — `yenta` service on `team2`:
+> `https://yenta.team2realbrokerage.com`
 
 To add a new environment, duplicate an existing config file and update the token:
 ```bash

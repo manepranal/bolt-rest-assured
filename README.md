@@ -111,9 +111,24 @@ This fetches the ticket, generates the test class, and raises a PR automatically
 
 ## Environments
 
+All environments follow the same URL pattern — just swap in the env name:
+
 | Env | Base URL pattern |
 |-----|-----------------|
 | team1 | `https://{service}.team1realbrokerage.com` |
 | team2 | `https://{service}.team2realbrokerage.com` |
+| team3 | `https://{service}.team3realbrokerage.com` |
+| team4 | `https://{service}.team4realbrokerage.com` |
 | staging | `https://{service}.stagerealbrokerage.com` |
 | play | `https://{service}.playrealbrokerage.com` |
+
+Each env has its own config file at `src/test/resources/config-{env}.properties` with all service base URLs and an `auth.token` property.
+
+> Example for `yenta` on `team3`:
+> `https://yenta.team3realbrokerage.com`
+
+To add a new environment, duplicate an existing config file and update the token:
+```bash
+cp src/test/resources/config-team1.properties src/test/resources/config-team3.properties
+# then update auth.token inside config-team3.properties
+```

@@ -1,6 +1,25 @@
 # bolt-rest-assured
 
-REST Assured API test suite for Real Brokerage bolt microservices.
+## What is this?
+
+`bolt-rest-assured` is an automated API test suite for the **Real Brokerage bolt platform** — a collection of microservices that power the brokerage operations product.
+
+The purpose of this repo is to give the QA team a reliable, repeatable way to verify API behaviour across all bolt microservices on any environment (team1–4, staging, play) — without relying on manual Postman runs alone.
+
+## What does it do?
+
+- **API regression testing** — validates that existing endpoints continue to behave correctly after each deployment
+- **Bug verification** — each bug ticket gets a dedicated test that reproduces the issue, confirming it fails before a fix and passes after
+- **Story acceptance testing** — new feature stories get happy-path and edge-case tests to confirm the implementation meets requirements
+- **Multi-environment support** — the same test suite can be pointed at any environment by switching the Maven profile
+- **Auto-generated tests** — new test classes are generated automatically from YouTrack tickets using the [YouTrack QA Agent](#adding-new-tests), so the QA engineer doesn't have to write boilerplate from scratch
+
+## How does it work?
+
+1. Each microservice has its own test class (e.g. `YentaTest.java`, `ArrakisTest.java`)
+2. Each test class extends `BaseTest` which handles auth and base URL injection from a config file
+3. Tests are tagged by service so you can run one service or all of them
+4. When a bug or story ticket is raised, the QA agent generates a new test class for it and opens a PR — the engineer reviews and merges
 
 ## Stack
 
